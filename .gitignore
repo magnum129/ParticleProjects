@@ -1,0 +1,5 @@
+# Compiled Stuff
+*.bin
+
+# Private Stuff
+*.private
