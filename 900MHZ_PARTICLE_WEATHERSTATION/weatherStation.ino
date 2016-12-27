@@ -103,7 +103,27 @@ volatile long lastWindIRQ = 0;
 volatile byte windClicks = 0;
 volatile unsigned long raintime, rainlast, raininterval, rain;
 
+// Data Structure
+typedef struct {
+  float         soiltempf;
+  float         humidity;
+  float         inches;
+  int           winddir;
 
+  float         windspeedmph;
+  int           windgustdir;
+  float         windgustmph;
+  float         rainin;
+
+  float         dewptF;
+  float         windspdmph_avg2m;
+  int           winddir_avg2m;
+  float         windgustmph_10m;
+
+  int           windgustdir_10m;
+  float         dailyrainin;
+} Payload;
+Payload theData;
 
 //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
@@ -199,14 +219,26 @@ void debugOut(String output)
 void submitWeather()
 {
 
-    char radiopacket [500];
-
-    sprintf(radiopacket, "%f|%f|%f|%d|%f|%d|%f|%f|%f|%f|%d|%f|%d|%f",
-    soiltempf, humidity, inches, winddir, windspeedmph, windgustdir, windgustmph, rainin, dewptF, windspdmph_avg2m, winddir_avg2m, windgustmph_10m, windgustdir_10m, dailyrainin);
-    debugOut("Sending: ");
-    debugOutLn(radiopacket);
-    radio.send(RECEIVER, radiopacket, strlen(radiopacket));
+    theData.soiltempf = soiltempf;
+    theData.humidity = humidity;
+    theData.inches = inches;
+    theData.winddir = winddir;
+    theData.windspeedmph = windspeedmph;
+    theData.windgustdir = windgustdir;
+    theData.windgustmph = windgustmph;
+    theData.rainin = rainin;
+    theData.dewptF = dewptF;
+    theData.windspdmph_avg2m = windspdmph_avg2m;
+    theData.winddir_avg2m = winddir_avg2m;
+    theData.windgustmph_10m = windgustmph_10m;
+    theData.windgustdir_10m = windgustdir_10m;
+    theData.dailyrainin = dailyrainin;
+    debugOut("Sending ");
+    debugOut(String(sizeof(theData)));
+    debugOutLn(" bytes.");
+    radio.send(RECEIVER, (const void*)(&theData), sizeof(theData));
     radio.receiveDone(); //put radio in RX mode
+    radio.sleep();
 }
 
 //---------------------------------------------------------------
