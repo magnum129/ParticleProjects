@@ -101,6 +101,7 @@ void setup()
   Serial.print(FREQUENCY==RF69_433MHZ ? 433 : FREQUENCY==RF69_868MHZ ? 868 : 915);
   Serial.println(" MHz");
   tft.begin();
+  tft.setRotation(3);
 }
 
 
@@ -122,7 +123,224 @@ if (radio.receiveDone())
       theData = *(Payload*)radio.DATA; //assume radio.DATA actually contains our struct and not something else
 
 
-      Serial.print("soiltempf: ");
+
+
+
+
+
+
+
+
+
+
+float Windchill = 35.74 + 0.6215*theData.soiltempf - 35.75*pow(theData.windspeedmph,0.16) + 0.4275*theData.soiltempf*pow(theData.windspeedmph,0.16);
+
+
+
+  tft.setTextSize(2);
+  tft.setCursor(0,226);
+  tft.println("(MON) 11/11/16  08:34:12AM");
+
+
+  tft.setTextSize(2);
+  tft.setCursor(0,0);
+  tft.println("Feels Like:   Temperature:");
+
+  tft.setCursor(0,20);
+  tft.setTextSize(6);
+
+
+
+  if(round(Windchill) <= 32) {
+    tft.setTextColor(ILI9341_BLUE);
+    tft.print(round(Windchill));
+  } else if (round(Windchill) > 32 && round(Windchill) <= 88) {
+    tft.setTextColor(ILI9341_WHITE);
+    tft.print(round(Windchill));
+  } else if (round(Windchill) > 88) {
+    tft.setTextColor(ILI9341_RED);
+    tft.print(round(Windchill));
+  } else {
+    tft.setTextColor(ILI9341_YELLOW);
+    tft.print("err");
+  }
+
+
+
+  
+  
+  
+  
+  tft.setTextSize(2);
+  tft.println((char)247);
+  
+
+  
+
+  tft.setTextSize(8);
+  
+  switch (String(round(theData.soiltempf)).length()) {
+    case 1:
+      tft.setTextColor(ILI9341_WHITE);
+      tft.setCursor(218,20);
+      tft.print(round(theData.soiltempf));
+      tft.setTextSize(3);
+      tft.println((char)247);
+      break;
+    case 2:
+      tft.setTextColor(ILI9341_WHITE);
+      tft.setCursor(183,20);
+      tft.print(round(theData.soiltempf));
+      tft.setTextSize(3);
+      tft.println((char)247);
+      break;
+    case 3:
+      tft.setTextColor(ILI9341_WHITE);
+      tft.setCursor(157,20);
+      tft.print(round(theData.soiltempf));
+      tft.setTextSize(3);
+      tft.println((char)247);
+      
+      break;
+    default:
+      tft.setTextColor(ILI9341_WHITE);
+      tft.setCursor(0,0);
+      tft.print("err");
+    break;
+  }
+/////////////////////////////////
+//                 left top
+//      tft.setCursor(0,0);
+/////////////////////////////////
+  tft.setCursor(185,89);
+  tft.setTextSize(2);
+  tft.print("Rain (24h):");
+  tft.setCursor(183,110);
+  tft.setTextSize(3);
+  if(theData.rainin >= 10) {
+    theData.rainin=theData.rainin+.05;
+    tft.print(theData.rainin, 1);
+  } else {
+    theData.rainin=theData.rainin+.005;
+    tft.print(theData.rainin, 2);
+  }
+  tft.print("in.");
+
+  tft.setCursor(0,80);
+  tft.setTextSize(2);
+  tft.print("Wind Speed:");
+  tft.setTextSize(4);
+  tft.setCursor(0,100);
+  if(theData.windspeedmph >= 100) {
+    tft.print(round(theData.windspeedmph));
+  } else if (theData.windspeedmph >= 10) {
+    theData.windspeedmph=theData.windspeedmph+.05;
+    tft.print(theData.windspeedmph, 1);
+  } else {
+    theData.windspeedmph=theData.windspeedmph+.005;
+    tft.print(theData.windspeedmph, 2);
+  }
+  tft.print("mph");
+
+  
+  
+  
+  
+  
+  tft.setCursor(0,140);
+  tft.setTextSize(2);
+  tft.print("W Dir:");
+  tft.setTextSize(4);
+  
+  
+  switch (theData.winddir)
+  {
+    case 0:
+    tft.setCursor(20,160);
+      tft.print("N");
+      break;
+    case 45:
+    tft.setCursor(5,160);
+      tft.print("NE");
+      break;
+    case 90:
+    tft.setCursor(20,160);
+      tft.print("E");
+      break;
+    case 135:
+    tft.setCursor(5,160);
+      tft.print("SE");
+      break;
+    case 180:
+    tft.setCursor(20,160);
+      tft.print("S");
+      break;
+    case 225:
+    tft.setCursor(5,160);
+      tft.print("SW");
+      break;
+    case 270:
+    tft.setCursor(20,160);
+      tft.print("W");
+      break;
+    case 315:
+    tft.setCursor(0,160);
+      tft.print("NW");
+      break;
+    default:
+    tft.setCursor(0,160);
+      tft.print("eR");
+      // if nothing else matches, do the
+      // default (which is optional)
+  }
+  
+  tft.setCursor(90,140);
+  tft.setTextSize(2);
+  tft.print("Forcast:");
+  tft.setCursor(90,165);
+  tft.setTextSize(3);
+  tft.print("H:");
+//  tft.print(round(fHgh));
+  tft.setTextSize(2);
+  tft.print((char)247);
+  tft.setTextSize(3);
+  tft.print(" L:");
+//  tft.print(round(fLow));
+  tft.setTextSize(2);
+  tft.println((char)247);
+  tft.setCursor(90,190);
+  tft.print("Rain Today");
+
+  //tft.setCursor(0,207);
+  //tft.print("Some extra text goes here!"); 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ /*     Serial.print("soiltempf: ");
       Serial.println(theData.soiltempf);
 
       Serial.print("humidity: ");
@@ -168,7 +386,7 @@ if (radio.receiveDone())
 
       Serial.print("dailyrainin: ");
       Serial.println(theData.dailyrainin);
-
+*/
     }
   }
 
