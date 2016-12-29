@@ -1,5 +1,5 @@
-#include "spark-dallas-temperature/spark-dallas-temperature.h"
 #include "OneWire/OneWire.h"
+#include "spark-dallas-temperature/spark-dallas-temperature.h"
 #include "SparkFun_Photon_Weather_Shield_Library/SparkFun_Photon_Weather_Shield_Library.h"
 #include "RFM69-Particle/RFM69-Particle.h"
 #include "math.h"
@@ -28,19 +28,12 @@ int16_t RECEIVER = 1;     //receiver's node ID
 RFM69 radio = RFM69(RFM69_CS, RFM69_IRQ, IS_RFM69HCW, RFM69_IRQN);
 
 
-
 //Soil Temp Probe, that I'm using as air temp
 #define ONE_WIRE_BUS D4
-#define TEMPERATURE_PRECISION 11
-OneWire oneWire(ONE_WIRE_BUS);
-DallasTemperature sensors(&oneWire);
-
-DeviceAddress inSoilThermometer =
-{0x28, 0x44, 0xAE, 0x0, 0x8, 0x0, 0x0, 0x3};//Waterproof temp sensor address
+DallasTemperature ds(new OneWire(D4));
 
 //Create Instance of HTU21D or SI7021 temp and humidity sensor and MPL3115A2 barometric sensor
 Weather sensor;
-void update18B20Temp(DeviceAddress deviceAddress, double &tempC);//predeclare to compile
 
 
 //Pins for analog sensors
@@ -94,7 +87,7 @@ float dewptF = 0;
 float dewptC = 0;
 float pascals = 0;
 float inches = 0;
-double InTempC = 0;//original temperature in C from DS18B20
+float soiltempc = 0;//original temperature in C from DS18B20
 float soiltempf = 0;//converted temperature in F from DS18B20
 
 
@@ -132,7 +125,6 @@ unsigned int nextTime = 0;
 //Poll weather data every second.
 Timer get_weather_timer(1000, getWeather);
 
-String data;
 
 void setup() {
     Serial.begin(115200);
@@ -163,10 +155,6 @@ void setup() {
 
     radio.encrypt(ENCRYPTKEY);
 
-
-    //DS18B20 external temp
-    sensors.begin();
-    sensors.setResolution(inSoilThermometer, TEMPERATURE_PRECISION);
     //Initialize the I2C sensors and ping them
     sensor.begin();
     //Analog nput from wind meters windspeed sensor
@@ -188,17 +176,16 @@ void setup() {
     attachInterrupt(WSPEED, wspeedIRQ, FALLING);
     //Turn on interrupts
     interrupts();
-
     //Have to start this after everything else is configured!
     get_weather_timer.start();
 
 }
 
 void loop() {
-    // Restart once every 24 hours...
     if (nextTime > millis() && nextTime !=0) {
         return;
     }
+    getSoilTemp();
     submitWeather();
     nextTime = millis() + (submitEverySeconds * 1000); //WiFi is already connected, hopefully...
 }
@@ -248,17 +235,17 @@ void getWeather()
   humidity = sensor.getRH();
 
   // Measure Temperature from the HTU21D or Si7021
-  humTempC = sensor.getTemp();
-  humTempF = (humTempC * 9)/5 + 32;
+//  humTempC = sensor.getTemp();
+//  humTempF = (humTempC * 9)/5 + 32;
   // Temperature is measured every time RH is requested.
   // It is faster, therefore, to read it from previous RH
   // measurement with getTemp() instead with readTemp()
 
-  getSoilTemp();//Read the DS18B20 waterproof temp sensor
+//  getSoilTemp();//Read the DS18B20 waterproof temp sensor
 
   //Measure the Barometer temperature in F from the MPL3115A2
-  baroTempC = sensor.readBaroTemp();
-  baroTempF = (baroTempC * 9)/5 + 32; //convert the temperature to F
+//  baroTempC = sensor.readBaroTemp();
+//  baroTempF = (baroTempC * 9)/5 + 32; //convert the temperature to F
 
   //Measure Pressure from the MPL3115A2
   pascals = sensor.readPressure();
@@ -268,11 +255,11 @@ void getWeather()
   //float altf = sensor.readAltitudeFt();
 
   //Average the temperature reading from both sensors
-  tempC=((humTempC+baroTempC)/2);
-  tempF=((humTempF+baroTempF)/2);
+//  tempC=((humTempC+baroTempC)/2);
+//  tempF=((humTempF+baroTempF)/2);
 
   //Calculate Dew Point
-  dewptC = dewPoint(tempC, humidity);
+  dewptC = dewPoint(soiltempc, humidity);
   dewptF = (dewptC * 9.0)/ 5.0 + 32.0;
 
   //Calc winddir
@@ -320,44 +307,44 @@ void getWeather()
   //Calculate amount of rainfall for the last 60 minutes
   rainin = 0;
   for(int i = 0 ; i < 60 ; i++)
-    rainin += rainHour[i];
+  rainin += rainHour[i];
 
 
-    //Take a speed and direction reading every second for 2 minute average
-    if(++seconds_2m > 119) seconds_2m = 0;
+  //Take a speed and direction reading every second for 2 minute average
+  if(++seconds_2m > 119) seconds_2m = 0;
 
-    //Calc the wind speed and direction every second for 120 second to get 2 minute average
-    float currentSpeed = windspeedmph;
-    //float currentSpeed = random(5); //For testing
-    int currentDirection = winddir;
-    windspdavg[seconds_2m] = (int)currentSpeed;
-    winddiravg[seconds_2m] = currentDirection;
-    //if(seconds_2m % 10 == 0) displayArrays(); //For testing
+  //Calc the wind speed and direction every second for 120 second to get 2 minute average
+  float currentSpeed = windspeedmph;
+  //float currentSpeed = random(5); //For testing
+  int currentDirection = winddir;
+  windspdavg[seconds_2m] = (int)currentSpeed;
+  winddiravg[seconds_2m] = currentDirection;
+  //if(seconds_2m % 10 == 0) displayArrays(); //For testing
 
-    //Check to see if this is a gust for the minute
-    if(currentSpeed > windgust_10m[minutes_10m])
-    {
-      windgust_10m[minutes_10m] = currentSpeed;
-      windgustdirection_10m[minutes_10m] = currentDirection;
-    }
+  //Check to see if this is a gust for the minute
+  if(currentSpeed > windgust_10m[minutes_10m])
+  {
+    windgust_10m[minutes_10m] = currentSpeed;
+    windgustdirection_10m[minutes_10m] = currentDirection;
+  }
 
-    //Check to see if this is a gust for the day
-    if(currentSpeed > windgustmph)
-    {
-      windgustmph = currentSpeed;
-      windgustdir = currentDirection;
-    }
+  //Check to see if this is a gust for the day
+  if(currentSpeed > windgustmph)
+  {
+    windgustmph = currentSpeed;
+    windgustdir = currentDirection;
+  }
 
-    if(++seconds > 59)
-    {
-      seconds = 0;
+  if(++seconds > 59)
+  {
+    seconds = 0;
 
-      if(++minutes > 59) minutes = 0;
-      if(++minutes_10m > 9) minutes_10m = 0;
+    if(++minutes > 59) minutes = 0;
+    if(++minutes_10m > 9) minutes_10m = 0;
 
-      rainHour[minutes] = 0; //Zero out this minute's rainfall amount
-      windgust_10m[minutes_10m] = 0; //Zero out this minute's gust
-    }
+    rainHour[minutes] = 0; //Zero out this minute's rainfall amount
+    windgust_10m[minutes_10m] = 0; //Zero out this minute's gust
+  }
 
   printInfo();
 }
@@ -424,19 +411,16 @@ float get_wind_speed()
 
 void getSoilTemp()
 {
-    //get temp from DS18B20
-    sensors.requestTemperatures();
-    update18B20Temp(inSoilThermometer, InTempC);
-    //Every so often there is an error that throws a -127.00, this compensates
-    if(InTempC < -100)
-      soiltempf = soiltempf;//push last value so data isn't out of scope
-    else
-      soiltempf = (InTempC * 9)/5 + 32;//else grab the newest, good data
-}
-
-void update18B20Temp(DeviceAddress deviceAddress, double &tempC)
-{
-  tempC = sensors.getTempC(deviceAddress);
+  Serial.println("Reading TEMP...");
+  ds.requestTemperatures();
+  float tempsoiltempc = ds.getTempCByIndex(0);
+  float tempsoiltempf = ds.getTempFByIndex(0);
+  Serial.println(tempsoiltempc);
+  Serial.println(tempsoiltempf);
+  if ( tempsoiltempf > -190) {
+    soiltempf = tempsoiltempf;
+    soiltempc = tempsoiltempc;
+  }
 }
 
 //This function prints the weather data out to the default Serial Port
@@ -485,14 +469,17 @@ void printInfo()
   debugOut(String(rainin,2));
   debugOutLn(" in.");
 
+  /*
   debugOut("Enclousure Temp: ");
   debugOut(String(tempF));
   debugOutLn(" F");
-
+  */
+  
   debugOut("Humidity: ");
   debugOut(String(humidity));
   debugOutLn("%");
 
+  /*
   debugOut("Baro_Temp: ");
   debugOut(String(baroTempF));
   debugOutLn(" F");
@@ -500,6 +487,7 @@ void printInfo()
   debugOut("Humid_Temp: ");
   debugOut(String(humTempF));
   debugOutLn(" F");
+  */
 
   debugOut("Pressure: ");
   debugOut(String(pascals/100));

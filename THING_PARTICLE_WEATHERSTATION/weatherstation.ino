@@ -1,4 +1,4 @@
-SYSTEM_MODE(SEMI_AUTOMATIC);
+//SYSTEM_MODE(SEMI_AUTOMATIC);
 STARTUP(WiFi.selectAntenna(ANT_EXTERNAL)); // selects the u.FL antenna
 
 #include "HttpClient/HttpClient.h"
