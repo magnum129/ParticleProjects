@@ -123,8 +123,8 @@ Payload theData;
 unsigned int nextTime = 0;
 
 //Poll weather data every second.
-Timer get_weather_timer(1000, getWeather);
-
+Timer weather_timer(1000, weatherTimer);
+bool doGetWeather = false;
 
 void setup() {
     Serial.begin(115200);
@@ -177,17 +177,20 @@ void setup() {
     //Turn on interrupts
     interrupts();
     //Have to start this after everything else is configured!
-    get_weather_timer.start();
+    weather_timer.start();
 
 }
 
 void loop() {
-    if (nextTime > millis() && nextTime !=0) {
-        return;
-    }
-    getSoilTemp();
-    submitWeather();
-    nextTime = millis() + (submitEverySeconds * 1000); //WiFi is already connected, hopefully...
+  if (doGetWeather) {
+    getWeather();
+    doGetWeather = false;
+  }
+  if (nextTime > millis() && nextTime !=0) {
+      return;
+  }
+  submitWeather();
+  nextTime = millis() + (submitEverySeconds * 1000); //WiFi is already connected, hopefully...
 }
 
 void debugOutLn(String output)
@@ -203,29 +206,34 @@ void debugOut(String output)
   }
 }
 
+void weatherTimer()
+{
+  doGetWeather = true;
+}
+
 void submitWeather()
 {
 
-    theData.soiltempf = soiltempf;
-    theData.humidity = humidity;
-    theData.inches = inches;
-    theData.winddir = winddir;
-    theData.windspeedmph = windspeedmph;
-    theData.windgustdir = windgustdir;
-    theData.windgustmph = windgustmph;
-    theData.rainin = rainin;
-    theData.dewptF = dewptF;
-    theData.windspdmph_avg2m = windspdmph_avg2m;
-    theData.winddir_avg2m = winddir_avg2m;
-    theData.windgustmph_10m = windgustmph_10m;
-    theData.windgustdir_10m = windgustdir_10m;
-    theData.dailyrainin = dailyrainin;
-    debugOut("Sending ");
-    debugOut(String(sizeof(theData)));
-    debugOutLn(" bytes.");
-    radio.send(RECEIVER, (const void*)(&theData), sizeof(theData));
-    radio.receiveDone(); //put radio in RX mode
-    radio.sleep();
+  theData.soiltempf = soiltempf;
+  theData.humidity = humidity;
+  theData.inches = inches;
+  theData.winddir = winddir;
+  theData.windspeedmph = windspeedmph;
+  theData.windgustdir = windgustdir;
+  theData.windgustmph = windgustmph;
+  theData.rainin = rainin;
+  theData.dewptF = dewptF;
+  theData.windspdmph_avg2m = windspdmph_avg2m;
+  theData.winddir_avg2m = winddir_avg2m;
+  theData.windgustmph_10m = windgustmph_10m;
+  theData.windgustdir_10m = windgustdir_10m;
+  theData.dailyrainin = dailyrainin;
+  debugOut("Sending ");
+  debugOut(String(sizeof(theData)));
+  debugOutLn(" bytes.");
+  radio.send(RECEIVER, (const void*)(&theData), sizeof(theData));
+  radio.receiveDone(); //put radio in RX mode
+  radio.sleep();
 }
 
 //---------------------------------------------------------------
@@ -241,7 +249,7 @@ void getWeather()
   // It is faster, therefore, to read it from previous RH
   // measurement with getTemp() instead with readTemp()
 
-//  getSoilTemp();//Read the DS18B20 waterproof temp sensor
+  getSoilTemp();//Read the DS18B20 waterproof temp sensor
 
   //Measure the Barometer temperature in F from the MPL3115A2
 //  baroTempC = sensor.readBaroTemp();
@@ -474,7 +482,7 @@ void printInfo()
   debugOut(String(tempF));
   debugOutLn(" F");
   */
-  
+
   debugOut("Humidity: ");
   debugOut(String(humidity));
   debugOutLn("%");
