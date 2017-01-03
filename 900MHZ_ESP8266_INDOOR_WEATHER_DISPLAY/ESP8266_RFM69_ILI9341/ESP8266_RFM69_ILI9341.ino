@@ -1,11 +1,19 @@
 #include <RFM69.h>
 #include <SPI.h>
+#include <ESP8266WiFi.h>
+#include <WiFiUdp.h>
+#include <TimeLib.h>
+#include <Timezone.h>
+
 #include "Adafruit_GFX.h"
 #include "Adafruit_ILI9341.h"
+#include "password.h"
 
 // For the Adafruit shield, these are the default.
 #define TFT_DC 5
 #define TFT_CS 2
+
+#define TFT_DIM_PIN 16
 
 Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC);
 
@@ -32,7 +40,7 @@ int nextTime = 0;
 #define RFM69_CS      15
 #define RFM69_IRQ     4
 #define RFM69_IRQN    4 //digitalPinToInterrupt(RFM69_IRQ)
-#define RFM69_RST     16
+//#define RFM69_RST     16
 
 int16_t packetnum = 0;  // packet counter, we increment per xmission
 
@@ -63,18 +71,63 @@ Payload theData;
 
 
 
+//UI
+bool dataReceived = false;
+int timer = 0;
+int brightness = 1023;
+
+
+
+// Button(s)
+#define buttonOnePin 0
+
+int buttonOneState;
+int buttonOnePrevState;
+int buttonOnePushedTime;
+
+#define buttonTwoPin A0
+
+int buttonTwoState;
+int buttonTwoPrevState;
+int buttonTwoPushedTime;
+
+//WIFI
+const char *ssid     = WIFISSID;
+const char *password = WIFIPASSWORD;
+
+// NTP Servers:
+//static const char ntpServerName[] = "us.pool.ntp.org";
+static const char ntpServerName[] = "time.nist.gov";
+
+
+const int timeZone = 0; // UTC
+
+TimeChangeRule usEDT = {"EDT", Second, Sun, Mar, 2, -240};  //Eastern Daylight Time = UTC - 4 hours
+TimeChangeRule usEST = {"EST", First, Sun, Nov, 2, -300};   //Eastern Standard Time = UTC - 5 hours
+Timezone usET(usEDT, usEST);
+
+
+
+WiFiUDP Udp;
+unsigned int localPort = 8888;  // local port to listen for UDP packets
+
+time_t getNtpTime();
+void digitalClockDisplay();
+void printDigits(int digits);
+void sendNTPpacket(IPAddress &address);
+
 void setup()
 {
-
+wdt_disable();
     Serial.begin(115200); // Open serial monitor at 115200 baud to see ping results.
     Serial.println("RFM69 Based Receiver");
 
-    // Hard Reset the RFM module - Optional
+ /*   // Hard Reset the RFM module - Optional
   pinMode(RFM69_RST, OUTPUT);
   digitalWrite(RFM69_RST, HIGH);
   delay(100);
   digitalWrite(RFM69_RST, LOW);
-  delay(100);
+  delay(100);*/
 
     // Initialize radio
   radio.initialize(FREQUENCY,NODEID,NETWORKID);
@@ -90,7 +143,7 @@ void setup()
   radio.writeReg(0x03,0x0D); //set bit rate to 9k6
   radio.writeReg(0x04,0x05);
 
-  radio.setPowerLevel(10); // power output ranges from 0 (5dBm) to 31 (20dBm)
+  radio.setPowerLevel(2); // power output ranges from 0 (5dBm) to 31 (20dBm)
                           // Note at 20dBm the radio sources up to 130 mA!
                          // Selecting a power level between 10 and 15 will use ~30-44 mA which is generally more compatible with Photon power sources
                         // As reference, power level of 10 transmits successfully at least 300 feet with 0% packet loss right through a home, sufficient for most use
@@ -102,11 +155,95 @@ void setup()
   Serial.println(" MHz");
   tft.begin();
   tft.setRotation(3);
+
+  
+  analogWrite(TFT_DIM_PIN, brightness);
+ /*pinMode(TFT_DIM_PIN, OUTPUT);
+  digitalWrite(TFT_DIM_PIN, LOW);*/
+ 
+  pinMode(buttonOnePin, INPUT);
+  pinMode(buttonTwoPin, INPUT);
+
+
+WiFi.begin(ssid, password);
+
+  while ( WiFi.status() != WL_CONNECTED ) {
+    delay ( 500 );
+    Serial.print ( "." );
+  }
+
+
+  Udp.begin(localPort);
+  Serial.print("Local UDP port: ");
+  Serial.println(Udp.localPort());
+  Serial.println("waiting for sync");
+  setSyncProvider(getNtpTime);
+  setSyncInterval(7200);
+ 
 }
 
+int ntpUpdateTimer;
 
 //=========================MAIN LOOP===========================================
 void loop() {
+
+  if (timeNotSet && ntpUpdateTimer < millis()) {
+   Serial.println("Time not set!");
+   getNtpTime();
+   ntpUpdateTimer = millis() + 10000;
+  }
+ 
+  if(millis() > timer)
+  {
+    timer = millis() + 1000;     
+  }
+
+  buttonOneState = digitalRead(buttonOnePin);
+      
+  buttonTwoState = analogRead(buttonTwoPin)/1024;
+
+ 
+  if (buttonOneState == HIGH) {
+    if(buttonOnePrevState < millis() && brightness < 1020)
+    {
+      Serial.println("Button 1 Pushed");
+      buttonOnePrevState = millis() + 1000;
+      brightness = brightness + 100;
+      Serial.print("Brightness: ");
+      Serial.println(brightness);
+      analogWrite(TFT_DIM_PIN, brightness);
+    } else if (brightness >= 1020) 
+    {
+      Serial.print("Brightness already at max.");
+    }
+  }
+  if (buttonTwoState == 1) {
+    if(buttonTwoPrevState < millis() && brightness > 10)
+    {
+      Serial.println("Button 2 Pushed");
+      buttonTwoPrevState = millis() + 1000;
+      brightness = brightness - 100;
+      Serial.print("Brightness: ");
+      Serial.println(brightness);
+      analogWrite(TFT_DIM_PIN, brightness);
+    } else if (brightness <= 10) 
+    {
+      Serial.print("Brightness already at min.");
+    }
+  }
+  
+if (!dataReceived)
+  {
+   tft.fillScreen(ILI9341_BLACK);
+   tft.setTextSize(3);
+   tft.setCursor(0,0);
+   tft.setTextColor(ILI9341_RED);
+   tft.println("OUTSIDE UNIT ON?");
+   tft.println("WAITING FOR DATA");
+   tft.setTextColor(ILI9341_WHITE);
+   dataReceived = true;
+  }
+  
 
 if (radio.receiveDone())
   {
@@ -139,7 +276,50 @@ float Windchill = 35.74 + 0.6215*theData.soiltempf - 35.75*pow(theData.windspeed
 
   tft.setTextSize(2);
   tft.setCursor(0,226);
-  tft.println("(MON) 11/11/16  08:34:12AM");
+
+
+  time_t utc = now();    //current time from the Time Library
+  time_t eastern = usET.toLocal(utc);
+  
+  char dateTimeStamp [80];
+  String dayAbbreviation;
+  switch (weekday(eastern)) {
+    case 1:
+      dayAbbreviation="SUN";
+      break;
+    case 2:
+      dayAbbreviation="MON";
+      break;
+    case 3:
+      dayAbbreviation="TUE";
+      break;
+    case 4:
+      dayAbbreviation="WED";
+      break;
+    case 5:
+      dayAbbreviation="THU";
+      break;
+    case 6:
+      dayAbbreviation="FRI";
+      break;
+    case 7:
+      dayAbbreviation="SAT";
+      break;
+      
+  }
+
+  String amOrPm;
+  if(isAM(eastern)){
+    amOrPm="A";
+  } else {
+    amOrPm="P";
+  }
+  
+  sprintf(dateTimeStamp, "(%s) %02d/%02d/%02d %02d:%02d:%02d%s",
+   dayAbbreviation.c_str(), month(eastern), day(eastern), year(eastern), hourFormat12(eastern), minute(eastern), second(eastern), amOrPm.c_str());
+  
+  tft.print(dateTimeStamp);
+  
 
 
   tft.setTextSize(2);
@@ -217,12 +397,12 @@ float Windchill = 35.74 + 0.6215*theData.soiltempf - 35.75*pow(theData.windspeed
   tft.print("Rain (24h):");
   tft.setCursor(183,110);
   tft.setTextSize(3);
-  if(theData.rainin >= 10) {
-    theData.rainin=theData.rainin+.05;
-    tft.print(theData.rainin, 1);
+  if(theData.dailyrainin >= 10) {
+    theData.dailyrainin=theData.dailyrainin+.05;
+    tft.print(theData.dailyrainin, 1);
   } else {
-    theData.rainin=theData.rainin+.005;
-    tft.print(theData.rainin, 2);
+    theData.dailyrainin=theData.dailyrainin+.005;
+    tft.print(theData.dailyrainin, 2);
   }
   tft.print("in.");
 
@@ -400,3 +580,64 @@ float Windchill = 35.74 + 0.6215*theData.soiltempf - 35.75*pow(theData.windspeed
 
 } //end loop
 
+
+
+
+/*-------- NTP code ----------*/
+
+const int NTP_PACKET_SIZE = 48; // NTP time is in the first 48 bytes of message
+byte packetBuffer[NTP_PACKET_SIZE]; //buffer to hold incoming & outgoing packets
+
+time_t getNtpTime()
+{
+  IPAddress ntpServerIP; // NTP server's ip address
+
+  while (Udp.parsePacket() > 0) ; // discard any previously received packets
+  Serial.println("Transmit NTP Request");
+  // get a random server from the pool
+  WiFi.hostByName(ntpServerName, ntpServerIP);
+  Serial.print(ntpServerName);
+  Serial.print(": ");
+  Serial.println(ntpServerIP);
+  sendNTPpacket(ntpServerIP);
+  uint32_t beginWait = millis();
+  while (millis() - beginWait < 1500) {
+    int size = Udp.parsePacket();
+    if (size >= NTP_PACKET_SIZE) {
+      Serial.println("Receive NTP Response");
+      Udp.read(packetBuffer, NTP_PACKET_SIZE);  // read packet into the buffer
+      unsigned long secsSince1900;
+      // convert four bytes starting at location 40 to a long integer
+      secsSince1900 =  (unsigned long)packetBuffer[40] << 24;
+      secsSince1900 |= (unsigned long)packetBuffer[41] << 16;
+      secsSince1900 |= (unsigned long)packetBuffer[42] << 8;
+      secsSince1900 |= (unsigned long)packetBuffer[43];
+      return secsSince1900 - 2208988800UL + timeZone * SECS_PER_HOUR;
+    }
+  }
+  Serial.println("No NTP Response :-(");
+  return 0; // return 0 if unable to get the time
+}
+
+// send an NTP request to the time server at the given address
+void sendNTPpacket(IPAddress &address)
+{
+  // set all bytes in the buffer to 0
+  memset(packetBuffer, 0, NTP_PACKET_SIZE);
+  // Initialize values needed to form NTP request
+  // (see URL above for details on the packets)
+  packetBuffer[0] = 0b11100011;   // LI, Version, Mode
+  packetBuffer[1] = 0;     // Stratum, or type of clock
+  packetBuffer[2] = 6;     // Polling Interval
+  packetBuffer[3] = 0xEC;  // Peer Clock Precision
+  // 8 bytes of zero for Root Delay & Root Dispersion
+  packetBuffer[12] = 49;
+  packetBuffer[13] = 0x4E;
+  packetBuffer[14] = 49;
+  packetBuffer[15] = 52;
+  // all NTP fields have been given values, now
+  // you can send a packet requesting a timestamp:
+  Udp.beginPacket(address, 123); //NTP requests are to port 123
+  Udp.write(packetBuffer, NTP_PACKET_SIZE);
+  Udp.endPacket();
+}

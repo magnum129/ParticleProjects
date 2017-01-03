@@ -7,7 +7,7 @@
 SYSTEM_MODE(MANUAL);
 
 //change this all you want!
-const int submitEverySeconds = 5;
+const int submitEverySeconds = 10;
 #define RADIOPOWERLEVEL 3
 
 //Debug
@@ -128,8 +128,13 @@ bool doGetWeather = false;
 
 void setup() {
     Serial.begin(115200);
-    //Dim the LED
-    RGB.brightness(10);
+    //Turn off the LED
+    pinMode(RGBR, INPUT_PULLUP);
+    pinMode(RGBG, INPUT_PULLUP);
+    pinMode(RGBB, INPUT_PULLUP);
+
+    //Status LED
+    pinMode(D7, OUTPUT);
 
     // Hard Reset the RFM module - Optional
     pinMode(RFM69_RST, OUTPUT);
@@ -213,7 +218,10 @@ void weatherTimer()
 
 void submitWeather()
 {
-
+  digitalWrite(D7, HIGH);
+  debugOutLn("Sending Weather Data:");
+  debugOutLn("===========================");
+  printInfo();
   theData.soiltempf = soiltempf;
   theData.humidity = humidity;
   theData.inches = inches;
@@ -234,6 +242,7 @@ void submitWeather()
   radio.send(RECEIVER, (const void*)(&theData), sizeof(theData));
   radio.receiveDone(); //put radio in RX mode
   radio.sleep();
+  digitalWrite(D7, LOW);
 }
 
 //---------------------------------------------------------------
@@ -353,8 +362,6 @@ void getWeather()
     rainHour[minutes] = 0; //Zero out this minute's rainfall amount
     windgust_10m[minutes_10m] = 0; //Zero out this minute's gust
   }
-
-  printInfo();
 }
 
 //---------------------------------------------------------------
@@ -419,12 +426,9 @@ float get_wind_speed()
 
 void getSoilTemp()
 {
-  Serial.println("Reading TEMP...");
   ds.requestTemperatures();
   float tempsoiltempc = ds.getTempCByIndex(0);
   float tempsoiltempf = ds.getTempFByIndex(0);
-  Serial.println(tempsoiltempc);
-  Serial.println(tempsoiltempf);
   if ( tempsoiltempf > -190) {
     soiltempf = tempsoiltempf;
     soiltempc = tempsoiltempc;
